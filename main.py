@@ -35,7 +35,19 @@ class CompactSizeEncoder:
         #    - For 2-byte, use 2 for length.
         #    - For 4-byte, use 4 for length.
         #    - For 8-byte, use 8 for length.
-        pass
+        if not isinstance(value, int):
+            raise ValueError("Value must be an integer.")
+        if not (0 <= value <= 0xFFFFFFFFFFFFFFFF):
+            raise ValueError("Value must be a non-negative integer and fit within u64.")
+
+        if value < 0xFD:
+            return bytes([value])
+        elif value <= 0xFFFF:
+            return b'\xFD' + value.to_bytes(2, byteorder='little')
+        elif value <= 0xFFFFFFFF:
+            return b'\xFE' + value.to_bytes(4, byteorder='little')
+        else:
+            return b'\xFF' + value.to_bytes(8, byteorder='little')
 
 class CompactSizeDecoder:
     """
@@ -68,7 +80,26 @@ class CompactSizeDecoder:
         #      Convert `data[1:9]` to int. 9 bytes consumed.
         # 4. Raise ValueError for `data` being too short for the indicated prefix.
         # 5. Return the decoded integer and the number of bytes consumed as a tuple.
-        pass
+        if not data:
+            raise ValueError("Data is too short.")
+
+        first_byte = data[0]
+        if first_byte < 0xFD:
+            return first_byte, 1
+        elif first_byte == 0xFD:
+            if len(data) < 3:
+                raise ValueError("Data too short.")
+            return int.from_bytes(data[1:3], byteorder='little'), 3
+        elif first_byte == 0xFE:
+            if len(data) < 5:
+                raise ValueError("Data too short.")
+            return int.from_bytes(data[1:5], byteorder='little'), 5
+        elif first_byte == 0xFF:
+            if len(data) < 9:
+                raise ValueError("Data too short.")
+            return int.from_bytes(data[1:9], byteorder='little'), 9
+        else:
+            raise ValueError("Data is too short.")
 
 class TransactionData:
     """
@@ -94,7 +125,14 @@ class TransactionData:
         """
         # TODO: Create a dictionary for the input and add to the `inputs` list.
         # TODO: Add a print statement confirming the input was added.
-        pass
+        input_data = {
+            'prev_txid': tx_id,
+            'prev_vout': vout_index,
+            'script_sig': script_sig,
+            'sequence': sequence
+        }
+        self.inputs.append(input_data)
+        print(f"Added input: {input_data}")
 
     def add_output(self, value_satoshi: int, script_pubkey: str):
         """
@@ -106,7 +144,9 @@ class TransactionData:
         """
         # TODO: Create a tuple for the output and add to the `outputs` list.
         # TODO: Add a print statement confirming the output was added.
-        pass
+        output_data = (value_satoshi, script_pubkey)
+        self.outputs.append(output_data)
+        print(f"Added output: {output_data}")
 
     def get_input_details(self) -> list[dict]:
         """
@@ -125,7 +165,18 @@ class TransactionData:
         # TODO: Print these extracted details.
         # TODO: Append a `copy` of the `input_data` dictionary to `detailed_inputs`.
         # TODO: Return `detailed_inputs`.
-        pass
+        detailed_inputs = []
+        print("\n")
+        for index, input_data in enumerate(self.inputs):
+            print(f"Input {index}:")
+            prev_txid = input_data.get('tx_id')
+            prev_vout = input_data.get('vout_index')
+            script_sig = input_data.get('script_sig')
+            print(f"  Previous Transaction ID: {prev_txid}")
+            print(f"  Previous Output Index: {prev_vout}")
+            print(f"  Script Signature: {script_sig}")
+            detailed_inputs.append(input_data.copy())
+        return detailed_inputs
 
     def summarize_outputs(self, min_value: int = 0) -> tuple[int, int]:
         """
@@ -154,7 +205,26 @@ class TransactionData:
         #    - If `total_satoshi` exceeds a certain threshold (e.g., 1,000,000,000 satoshis), print a message and `break` out of the loop.
         # TODO: Increment `index` at the end of each iteration (before `continue`/`break` checks).
         # TODO: Return `(total_satoshi, valid_outputs_count)` as a tuple.
-        pass
+        while index < len(self.outputs):
+            value, script = self.outputs[index]
+            if not isinstance(value, int) or value < 0:
+                print(f"Skipping invalid output at index {index}: {value}")
+                index += 1
+                continue
+            if value < min_value:
+                print(f"Skipping output below minimum value at index {index}: {value}")
+                index += 1
+                continue
+            
+            total_satoshi += value
+            valid_outputs_count += 1
+            print(f"Including output at index {index}: Value: {value}, Script: {script}")
+
+            if total_satoshi > 1_000_000_000:
+                print(f"Total satoshis exceeded 1 Billion. Breaking summarization.")
+                break
+            index += 1
+        return total_satoshi, valid_outputs_count
 
     def update_metadata(self, new_data: dict):
         """
@@ -165,14 +235,15 @@ class TransactionData:
         """
         # TODO: Using dict.update() to merge new_data into metadata
         # TODO: Add a print statement showing the updated metadata.
-        pass
+        self.metadata.update(new_data)
+        print(f"Updated metadata: {self.metadata}")
 
     def get_metadata_value(self, key: str, default=None):
         """
         Retrieves a value from metadata using dict.get().
         """
         # TODO: Return the retrieved value.
-        pass
+        return self.metadata.get(key, default)
 
     def get_transaction_header(self) -> tuple:
         """
@@ -181,7 +252,7 @@ class TransactionData:
         """
         # A simple tuple of header components
         # TODO: Create and return a tuple containing `version`, `length of inputs`, `length of outputs`, and `lock_time`.
-        pass
+        return (self.version, len(self.inputs), len(self.outputs), self.lock_time)
 
     def set_transaction_header(self, version: int, num_inputs: int, num_outputs: int, lock_time: int):
         """
@@ -193,7 +264,8 @@ class TransactionData:
         # TODO: Use multiple assignment to set `version`, and `lock_time`.
         #       You can use `_` for `num_inputs` and `num_outputs` if you don't intend to use them.
         # TODO: Add a print statement confirming the attributes were set.
-        pass
+        self.version, _, _, self.lock_time = version, num_inputs, num_outputs, lock_time
+        print(f"Set header via multiple assignment: {self.get_transaction_header()}")
 
 class UTXOSet:
     """
@@ -212,7 +284,9 @@ class UTXOSet:
         # TODO: Create a UTXO tuple using tx_id, vout_index, amount.
         # TODO: Add this tuple to the set.
         # TODO: Add a print statement confirming the UTXO was added.
-        pass
+        utxo = (tx_id, vout_index, amount)
+        self.utxos.add(utxo)
+        print(f"Added UTXO: {utxo}")
 
     def remove_utxo(self, tx_id: str, vout_index: int, amount: int) -> bool:
         """
@@ -222,14 +296,22 @@ class UTXOSet:
             bool: True if removed, False otherwise.
         """
         # TODO: Create and remove the UTXO tuple from the set.
-        pass
+        utxo = (tx_id, vout_index, amount)
+        if utxo in self.utxos:
+            self.utxos.remove(utxo)
+            print(f"Removed UTXO: {utxo}")
+            return True
+        else:
+            print(f"UTXO not found: {utxo}")
+            return False
 
     def get_balance(self) -> int:
         """
         Calculates the total balance from all UTXOs in the set.
         """
         # TODO: Iterate through the utxos and return the total
-        pass
+        total_balance = sum(amount for _, _, amount in self.utxos)
+        return total_balance
 
     def find_sufficient_utxos(self, target_amount: int) -> set:
         """
@@ -243,16 +325,27 @@ class UTXOSet:
             set: A set of UTXOs that fulfill the amount, or empty set if not possible.
         """
         # TODO: return set of UTXOs that fulfill the target_amount, or empty set if not possible.
-        pass
+        sufficient_utxos = set()
+        current_sum = 0
+        sorted_utxos = sorted(self.utxos, key=lambda x: x[2], reverse=True) 
 
+        for utxo in sorted_utxos:
+            sufficient_utxos.add(utxo)
+            current_sum += utxo[2]
 
+            if current_sum >= target_amount:
+                print(f"Found sufficient UTXOs: {sufficient_utxos}")
+                return sufficient_utxos
+                
+        print(f"Could not find sufficient UTXOs for amount: {target_amount}")
+        return set()
     def get_total_utxo_count(self) -> int:
         """
         Returns the number of UTXOs in the set.
         Demonstrates `len()` on a set.
         """
         # TODO: Return the length of the utxos set
-        pass
+        return len(self.utxos)
 
     def is_subset_of(self, other_utxo_set: 'UTXOSet') -> bool:
         """
@@ -260,21 +353,25 @@ class UTXOSet:
         Demonstrates set.issubset().
         """
         # TODO: check if is subset and return the result.
-        pass
+        return self.utxos.issubset(other_utxo_set.utxos)
 
     def combine_utxos(self, other_utxo_set: 'UTXOSet') -> 'UTXOSet':
         """
         Combines two UTXO sets
         """
         # TODO: Return `combined_set`.
-        pass
+        combined_set = UTXOSet()
+        combined_set.utxos = self.utxos.union(other_utxo_set.utxos)
+        return combined_set
 
     def find_common_utxos(self, other_utxo_set: 'UTXOSet') -> 'UTXOSet':
         """
         Finds UTXOs common to two sets using set.intersection().
         """
         # TODO: Get the intersection of the two sets and Return the common_set
-        pass
+        common_set = UTXOSet()
+        common_set.utxos = self.utxos.intersection(other_utxo_set.utxos)
+        return common_set
 
 def generate_block_headers(
     prev_block_hash: str,
@@ -308,4 +405,25 @@ def generate_block_headers(
     # TODO: Use `yield header_data` to return the current header without exiting the function.
     # TODO: Increment `nonce` and `attempts`.
     # TODO: Add a conditional print statement (e.g., every 100 attempts) to show progress.
-    pass
+    nonce = start_nonce
+    attempts = 0
+    while attempts < max_attempts:
+        header_data = {
+            "version": 1,
+            "prev_block_hash": prev_block_hash,
+            "merkle_root": merkle_root,
+            "timestamp": timestamp,
+            "bits": bits,
+            "nonce": nonce
+        }
+        
+        simulated_hash = hashlib.sha256(str(header_data).encode()).hexdigest()
+        print(f"Attempt {attempts}: Nonce: {nonce}, Simulated Hash: {simulated_hash}")
+
+        yield header_data
+        nonce += 1
+        attempts += 1
+        if attempts % 100 == 0:
+            print(f"Progress: {attempts}/{max_attempts} attempts made.")
+    print("Finished generating block headers.")
+    return  
