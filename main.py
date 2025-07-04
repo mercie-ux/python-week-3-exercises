@@ -327,15 +327,16 @@ class UTXOSet:
         # TODO: return set of UTXOs that fulfill the target_amount, or empty set if not possible.
         sufficient_utxos = set()
         current_sum = 0
+        print(f"\n--- Finding Sufficient UTXOs for Amount: {target_amount} ---")
         sorted_utxos = sorted(self.utxos, key=lambda x: x[2], reverse=True) 
 
         for utxo in sorted_utxos:
             sufficient_utxos.add(utxo)
             current_sum += utxo[2]
 
-            if current_sum >= target_amount:
-                print(f"Found sufficient UTXOs: {sufficient_utxos}")
-                return sufficient_utxos
+        if current_sum >= target_amount:
+            print(f"Found sufficient UTXOs")
+            return sufficient_utxos
                 
         print(f"Could not find sufficient UTXOs for amount: {target_amount}")
         return set()
@@ -418,12 +419,12 @@ def generate_block_headers(
         }
         
         simulated_hash = hashlib.sha256(str(header_data).encode()).hexdigest()
-        print(f"Attempt {attempts}: Nonce: {nonce}, Simulated Hash: {simulated_hash}")
+        print(f"Attempt {attempts + 1}: Nonce: {nonce}, Simulated Hash: {simulated_hash}")
 
         yield header_data
         nonce += 1
         attempts += 1
-        if attempts % 100 == 0:
-            print(f"Progress: {attempts}/{max_attempts} attempts made.")
+        if (attempts + 1) % 100 == 0:
+            print(f"... {attempts + 1} attempts made ...")
     print("Finished generating block headers.")
-    return  
+    
